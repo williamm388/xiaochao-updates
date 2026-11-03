@@ -1,7 +1,8 @@
 // ==UserScript==
 // @name         三国杀打小抄
 // @namespace    B站特供修复版
-// @version      1.4.32.3
+// @version      1.4.32.4
+// V1.4.32.4: remove the global beforeunload prompt that misclassified browser tab-close as automatic navigation.
 // V1.4.32.3: remove startup announcement, trim diagnostic UI, and apply first-install defaults without overriding saved preferences.
 // V1.4.32.2 RC1: shared evidence-gated deck-observation history for 观虚 and explicit deck-to-public-popup skills; never infer top order or hand ownership.
 // V1.4.32.1 RC1: show validated 观虚 deck-view snapshots beneath 武将手牌 > 牌堆; never merge into hands or claim current top.
