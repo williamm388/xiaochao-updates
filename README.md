@@ -23,4 +23,4 @@ Tampermonkey checks the metadata endpoint and automatically installs newer stabl
 
 ## Integrity
 
-See SHA256SUMS.txt and version.json. Versioned snapshots are retained under versions/. Release notes are maintained in the private source repository's GitHub Release descriptions, not in this public distribution repository.
+See SHA256SUMS.txt and version.json. Versioned snapshots are retained under versions/.

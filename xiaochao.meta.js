@@ -1,7 +1,8 @@
 // ==UserScript==
 // @name         三国杀打小抄
 // @namespace    B站特供修复版
-// @version      1.4.32.4
+// @version      1.4.32.5
+// V1.4.32.5: record explicit same-seat hand-reveal MoveType=21 packets as separate public-show history; preserve hand ownership and identity guards.
 // V1.4.32.4: remove the global beforeunload prompt that misclassified browser tab-close as automatic navigation.
 // V1.4.32.3: remove startup announcement, trim diagnostic UI, and apply first-install defaults without overriding saved preferences.
 // V1.4.32.2 RC1: shared evidence-gated deck-observation history for 观虚 and explicit deck-to-public-popup skills; never infer top order or hand ownership.

@@ -1,7 +1,8 @@
 // ==UserScript==
 // @name         三国杀打小抄
 // @namespace    B站特供修复版
-// @version      1.4.32.4
+// @version      1.4.32.5
+// V1.4.32.5: record explicit same-seat hand-reveal MoveType=21 packets as separate public-show history; preserve hand ownership and identity guards.
 // V1.4.32.4: remove the global beforeunload prompt that misclassified browser tab-close as automatic navigation.
 // V1.4.32.3: remove startup announcement, trim diagnostic UI, and apply first-install defaults without overriding saved preferences.
 // V1.4.32.2 RC1: shared evidence-gated deck-observation history for 观虚 and explicit deck-to-public-popup skills; never infer top order or hand ownership.
@@ -6701,6 +6702,7 @@
   // popup moves qualify. Nothing here updates live deck top or any player's hand.
   const _xiaochaoDeckEvidenceHistory = [];
   const _xiaochaoDeckPublicActive = new Map();
+  const _xiaochaoDeckPublicActivationStarted = new Map();
   let _xiaochaoDeckEvidenceRenderScheduled = false;
   const _xiaochaoDeckEvidenceLimit = 12;
 
@@ -6729,7 +6731,7 @@
       if (!_xiaochaoDeckEvidenceHistory.length) { node.style.display = 'none'; return; }
       node.style.display = 'block';
       const heading = document.createElement('div');
-      heading.textContent = '【牌堆來源・已見牌紀錄】（歷史，不代表當前牌堆頂）';
+      heading.textContent = '【技能／牌堆・已見牌紀錄】（歷史，不代表當前牌堆頂）';
       heading.style.fontWeight = 'bold';
       node.appendChild(heading);
       for (const snapshot of _xiaochaoDeckEvidenceHistory.slice(-6).reverse()) {
@@ -6791,6 +6793,49 @@
       proof:'typed_987_deck_group_with_verified_viewer' });
   }
 
+  // V1.4.32.5: MoveType=21 can carry an explicit public reveal from a player's
+  // hand zone back to that same hand zone. Accept it only when it follows a
+  // matching public skill activation and the source/owner/recipient are identical.
+  // This deliberately excludes hand-view packets where the skill actor differs
+  // from the hand owner (for example, 魄襲), and never changes hand ownership.
+  function _xiaochaoParsePublicHandRevealMove(packet, activationStartedAt, now = Date.now()) {
+    try {
+      if (!packet || !Number.isFinite(activationStartedAt) || !Number.isFinite(now) ||
+          now < activationStartedAt || now - activationStartedAt > 30000) return null;
+      const spellID = Number(packet.SpellID ?? packet.SpellId);
+      const actorSeatID = Number(packet.SrcSeatID);
+      const fromSeatID = Number(packet.FromID);
+      const toSeatID = Number(packet.ToID);
+      const fromZone = Number(packet.FromZone);
+      const toZone = Number(packet.ToZone);
+      const moveType = Number(packet.MoveType);
+      const cards = packet.CardIDs;
+      if (!Number.isSafeInteger(spellID) || spellID <= 0 ||
+          !Number.isSafeInteger(actorSeatID) || actorSeatID < 0 ||
+          fromSeatID !== actorSeatID || toSeatID !== actorSeatID ||
+          fromZone !== 5 || toZone !== 5 || moveType !== 21 ||
+          !Array.isArray(cards) || !cards.length) return null;
+      const ids = [];
+      const seen = new Set();
+      for (const item of cards) {
+        const raw = item && typeof item === 'object'
+          ? (item.CardID ?? item.CardId ?? item.cardID ?? item.cardId ?? item.id ?? item.ID)
+          : item;
+        const id = Number(raw);
+        if (!Number.isSafeInteger(id) || id <= 0 || seen.has(id)) return null;
+        seen.add(id);
+        ids.push(id);
+      }
+      const cardCount = Number(packet.CardCount);
+      if (!Number.isInteger(cardCount) || cardCount !== ids.length) return null;
+      if (packet.DataCount !== undefined && packet.DataCount !== null) {
+        const dataCount = Number(packet.DataCount);
+        if (!Number.isInteger(dataCount) || dataCount !== ids.length) return null;
+      }
+      return { spellID, actorSeatID, cardIDs:ids };
+    } catch (_) { return null; }
+  }
+
   function _xiaochaoObservePublicDeckSource(message, name) {
     if (!message || (name !== 'PubGsCUseSpell' && name !== 'PubGsCMoveCard')) return;
     const spellID = Number(message.SpellID ?? message.SpellId);
@@ -6800,8 +6845,27 @@
     if (name === 'PubGsCUseSpell') {
       // Each newly declared activation starts a distinct public-show group.
       _xiaochaoDeckPublicActive.delete(groupKey);
+      const now = Date.now();
+      for (const [key, startedAt] of _xiaochaoDeckPublicActivationStarted) {
+        if (now - startedAt > 30000) _xiaochaoDeckPublicActivationStarted.delete(key);
+      }
+      _xiaochaoDeckPublicActivationStarted.set(groupKey, now);
       return;
     }
+
+    // MoveType=21 same-seat hand->hand moves are explicit reveal packets for
+    // some skills (including 節言). Require a recent matching PubGsCUseSpell,
+    // exact source/owner identity, and complete server CardIDs before recording.
+    const activationStartedAt = _xiaochaoDeckPublicActivationStarted.get(groupKey);
+    const handReveal = _xiaochaoParsePublicHandRevealMove(message, activationStartedAt, Date.now());
+    if (handReveal && _xiaochaoValidSeatID(handReveal.actorSeatID) === actorSeatID &&
+        _xiaochaoKnownHandIDsLookLikeCards(handReveal.cardIDs)) {
+      _xiaochaoRecordDeckEvidence({kind:'public_show', spellID, actorSeatID,
+        cardIDs:handReveal.cardIDs, proof:'explicit_public_same_seat_hand_reveal_move_type_21', groupKey});
+      return;
+    }
+
+    // Preserve the existing typed deck->popup public reveal path unchanged.
     if (Number(message.FromID) !== 255 || Number(message.FromZone) !== 1 ||
         Number(message.ToID) !== 255 || Number(message.ToZone) !== 8 ||
         Number(message.MoveType) !== 6) return;
@@ -6940,6 +7004,7 @@
     try { document.getElementById('xiaochao-jizhan-public-reveals')?.remove(); } catch (_) {}
     _xiaochaoDeckEvidenceHistory.length = 0;
     _xiaochaoDeckPublicActive.clear();
+    _xiaochaoDeckPublicActivationStarted.clear();
     _xiaochaoDeckEvidenceRenderScheduled = false;
     try { document.getElementById('xiaochao-deck-evidence-history')?.remove(); } catch (_) {}
   }
@@ -7696,7 +7761,7 @@
       let current;
       for (let tries = 0; tries < 12; tries++) {
         current = { id: _xiaochaoCaptureSessionID, startedAt: _xiaochaoCaptureStartedAt,
-          savedAt: new Date().toISOString(), version: "1.4.32.3", packets, events, lastDom };
+          savedAt: new Date().toISOString(), version: "1.4.32.5", packets, events, lastDom };
         if (JSON.stringify(current).length <= 325000) break;
         packets = packets.slice(Math.ceil(packets.length * 0.2));
         events = events.slice(Math.ceil(events.length * 0.2));
@@ -7823,7 +7888,7 @@
       })) : [];
       return {
         timestamp: new Date().toISOString(),
-        version: "1.4.32.3",
+        version: "1.4.32.5",
         room: {
           myID: (() => { try { return room && room.myID; } catch (_) { return undefined; } })(),
           mySeats: Array.isArray(room && room.mySeats) ? room.mySeats.slice() : [],
@@ -7854,14 +7919,21 @@
           actorSeatID:record.actorSeatID, cardIDs:record.cardIDs.slice(),
           status:record.status, updatedAt:record.updatedAt
         })),
-        guanxuDeckSnapshots: _xiaochaoGuanxuDeckSnapshots.map(record => ({
+        guanxuDeckSnapshots: _xiaochaoDeckEvidenceHistory.filter(record => record.kind === 'private_view').map(record => ({
           actorSeatID:record.actorSeatID, targetSeatID:record.targetSeatID,
-          cardIDs:record.cardIDs.slice(), recordedAt:record.recordedAt,
+          cardIDs:record.cardIDs.slice(), recordedAt:record.observedAt,
+          status:'historical_snapshot_not_live_top'
+        })),
+        deckEvidenceHistory: _xiaochaoDeckEvidenceHistory.map(record => ({
+          kind:record.kind, spellID:record.spellID, skillName:record.skillName,
+          actorSeatID:record.actorSeatID, targetSeatID:record.targetSeatID,
+          cardIDs:record.cardIDs.slice(), proof:record.proof,
+          observedAt:record.observedAt, updatedAt:record.updatedAt,
           status:'historical_snapshot_not_live_top'
         }))
       };
     } catch (error) {
-      return { timestamp: new Date().toISOString(), version: "1.4.32.3", snapshotError: String(error) };
+      return { timestamp: new Date().toISOString(), version: "1.4.32.5", snapshotError: String(error) };
     }
   }
 
@@ -7875,7 +7947,7 @@
       };
       _xiaochaoDebugTraceBuffer.push(event);
       _xiaochaoCaptureDirty = true;
-      if (_xiaochaoCaptureEnabled && /^(KNOWN_HAND_RECORD|KNOWN_HAND_TEAMMATE_VIEW_RECORD|KNOWN_HAND_REFERENCE_SPELL_RECORD|KNOWN_HAND_GUANXU_DECISION|GUANXU_DECK_SNAPSHOT_RECORDED|KNOWN_HAND_ERROR|AUTHORITATIVE_HAND_MOVE_ERROR)$/.test(type)) {
+      if (_xiaochaoCaptureEnabled && /^(KNOWN_HAND_RECORD|KNOWN_HAND_TEAMMATE_VIEW_RECORD|KNOWN_HAND_REFERENCE_SPELL_RECORD|KNOWN_HAND_GUANXU_DECISION|GUANXU_DECK_SNAPSHOT_RECORDED|DECK_EVIDENCE_RECORDED|KNOWN_HAND_ERROR|AUTHORITATIVE_HAND_MOVE_ERROR)$/.test(type)) {
         // Persist decisive transitions promptly, rather than waiting for the next timer.
         _xiaochaoCaptureCheckpoint();
       }
@@ -7889,7 +7961,7 @@
   function _xiaochaoInstallDebugAPI() {
     try {
       window.__XIAOCHAO_DEBUG__ = {
-        version: "1.4.32.3",
+        version: "1.4.32.5",
         trace: _xiaochaoDebugTraceBuffer,
         snapshot: _xiaochaoDebugSnapshot,
         clear() {
@@ -7903,7 +7975,7 @@
         exportTrace() {
           const payload = {
             exportedAt: new Date().toISOString(),
-            version: "1.4.32.3",
+            version: "1.4.32.5",
             snapshot: _xiaochaoDebugSnapshot(),
             liveDiagnostic: (typeof _xiaochaoDiagState === "function" ? _xiaochaoDiagState("export") : null),
             trace: _xiaochaoDebugTraceBuffer.slice()
@@ -8071,7 +8143,7 @@
     try {
       const globalKey = "__XIAOCHAO_DIAGNOSTIC_INSTANCES__";
       const instance = {
-        version: "1.4.32.3",
+        version: "1.4.32.5",
         id: "diag-" + Date.now() + "-" + Math.random().toString(36).slice(2, 8),
         startedAt: new Date().toISOString()
       };
