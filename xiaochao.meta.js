@@ -1,7 +1,8 @@
 // ==UserScript==
 // @name         三国杀打小抄
 // @namespace    B站特供修复版
-// @version      1.4.32.5
+// @version      1.4.32.6
+// V1.4.32.6: synchronize the in-game version label and diagnostic exports with the release version; enforce version consistency during builds.
 // V1.4.32.5: record explicit same-seat hand-reveal MoveType=21 packets as separate public-show history; preserve hand ownership and identity guards.
 // V1.4.32.4: remove the global beforeunload prompt that misclassified browser tab-close as automatic navigation.
 // V1.4.32.3: remove startup announcement, trim diagnostic UI, and apply first-install defaults without overriding saved preferences.
