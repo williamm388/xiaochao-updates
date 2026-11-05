@@ -16,6 +16,10 @@ In Tampermonkey Dashboard → Settings → Userscript Update:
 
 Tampermonkey checks the metadata endpoint and automatically installs newer stable versions. No recurring manual import or “Check for userscript updates” action is required. Reload the game tab after an update to run the new code.
 
+## v1.5.0 namespace migration
+
+Version 1.5.0 changes `@namespace` to `williamm388`. Tampermonkey treats it as a new script entry: install v1.5.0 once from the userscript endpoint, confirm it works, then manually disable the old `B站特供修复版` entry. Future updates use the same endpoint.
+
 ## Update endpoints
 
 - Userscript: https://raw.githubusercontent.com/williamm388/xiaochao-updates/main/xiaochao.user.js

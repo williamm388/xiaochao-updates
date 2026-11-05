@@ -1,28 +1,11 @@
 // ==UserScript==
 // @name         三国杀打小抄
-// @namespace    B站特供修复版
-// @version      1.4.32.6
-// V1.4.32.6: synchronize the in-game version label and diagnostic exports with the release version; enforce version consistency during builds.
-// V1.4.32.5: record explicit same-seat hand-reveal MoveType=21 packets as separate public-show history; preserve hand ownership and identity guards.
-// V1.4.32.4: remove the global beforeunload prompt that misclassified browser tab-close as automatic navigation.
-// V1.4.32.3: remove startup announcement, trim diagnostic UI, and apply first-install defaults without overriding saved preferences.
-// V1.4.32.2 RC1: shared evidence-gated deck-observation history for 观虚 and explicit deck-to-public-popup skills; never infer top order or hand ownership.
-// V1.4.32.1 RC1: show validated 观虚 deck-view snapshots beneath 武将手牌 > 牌堆; never merge into hands or claim current top.
-// V1.4.32 RC1: typed ally 观虚 hand reveal; separate authoritative 吉占 public reveals from hand ownership; retain strict identity guard.
-// V1.4.31 RC1: fresh hand badges, evidence-tagged moves, duplicate physical-card display redaction.
-// V1.4.30 RC1: bind target-option reveal Params to explicit target; no actor-seat fallback.
-// V1.4.29 RC1: ranked verified-action self-identity override before roster/UI fail-closed.
-// V1.4.28 RC1: precise 观虚 hand parsing for stale 1v1 room.myID; retain 1.4.27 mode isolation.
-// V1.4.27 RC1: isolate two-seat 1v1 identity; preserve ranked resolver and strict card evidence.
-// V1.4.25: reject generic GsCRoleOptTargetNtf Params-as-hand guesses; preserve verified viewing rules and ranked identity safety
+// @namespace    williamm388
+// @version      1.5.0
 // @icon64       https://ts3.tc.mm.bing.net/th/id/ODF.HcIfqnk4n-lbffGcaqDC2w?w=32&h=32&qlt=90&pcl=fffffa&o=6&pid=1.2
 // @match        *://game.4399iw2.com/yxsgs/*
 // @match        *://my.4399.com/yxsgs/*
 // @match        *://*.sanguosha.com/*
-// @match        *://web.kuaiwan.com/kwsgsn/*
-// @match        *://wan.baidu.com/microend?gameId=19793595/*
-// @match        *://www.7k7k.com/special/sgs/?*
-// @match        *://playgame.iqiyi.com/login/iframe_page_web/top?game_id=146
 // @grant        none
 // @run-at       document-start
 // @updateURL    https://raw.githubusercontent.com/williamm388/xiaochao-updates/main/xiaochao.meta.js
@@ -7762,7 +7745,7 @@
       let current;
       for (let tries = 0; tries < 12; tries++) {
         current = { id: _xiaochaoCaptureSessionID, startedAt: _xiaochaoCaptureStartedAt,
-          savedAt: new Date().toISOString(), version: "1.4.32.6", packets, events, lastDom };
+          savedAt: new Date().toISOString(), version: "1.5.0", packets, events, lastDom };
         if (JSON.stringify(current).length <= 325000) break;
         packets = packets.slice(Math.ceil(packets.length * 0.2));
         events = events.slice(Math.ceil(events.length * 0.2));
@@ -7802,10 +7785,10 @@
     // In-memory evidence remains exportable when storage is unavailable/disabled.
     if (!sessions.some(s => s.id === _xiaochaoCaptureSessionID)) {
       sessions.push({ id:_xiaochaoCaptureSessionID, startedAt:_xiaochaoCaptureStartedAt,
-        version:"1.4.32.6", packets:_xiaochaoPacketBuffer.slice(),
+        version:"1.5.0", packets:_xiaochaoPacketBuffer.slice(),
         events:_xiaochaoDebugTraceBuffer.filter(e => e && e.type !== "DOM_DIAGNOSTIC_STATE").slice(-600) });
     }
-    const payload = { exportedAt:new Date().toISOString(), version:"1.4.32.6",
+    const payload = { exportedAt:new Date().toISOString(), version:"1.5.0",
       scope:"Local-only game-event diagnostics; sessions include live games and any subsequent replays.",
       captureEnabled:_xiaochaoCaptureEnabled, storageError:_xiaochaoCaptureError || null,
       sessions, currentSnapshot:_xiaochaoDebugSnapshot() };
@@ -7889,7 +7872,7 @@
       })) : [];
       return {
         timestamp: new Date().toISOString(),
-        version: "1.4.32.6",
+        version: "1.5.0",
         room: {
           myID: (() => { try { return room && room.myID; } catch (_) { return undefined; } })(),
           mySeats: Array.isArray(room && room.mySeats) ? room.mySeats.slice() : [],
@@ -7934,7 +7917,7 @@
         }))
       };
     } catch (error) {
-      return { timestamp: new Date().toISOString(), version: "1.4.32.6", snapshotError: String(error) };
+      return { timestamp: new Date().toISOString(), version: "1.5.0", snapshotError: String(error) };
     }
   }
 
@@ -7962,7 +7945,7 @@
   function _xiaochaoInstallDebugAPI() {
     try {
       window.__XIAOCHAO_DEBUG__ = {
-        version: "1.4.32.6",
+        version: "1.5.0",
         trace: _xiaochaoDebugTraceBuffer,
         snapshot: _xiaochaoDebugSnapshot,
         clear() {
@@ -7976,7 +7959,7 @@
         exportTrace() {
           const payload = {
             exportedAt: new Date().toISOString(),
-            version: "1.4.32.6",
+            version: "1.5.0",
             snapshot: _xiaochaoDebugSnapshot(),
             liveDiagnostic: (typeof _xiaochaoDiagState === "function" ? _xiaochaoDiagState("export") : null),
             trace: _xiaochaoDebugTraceBuffer.slice()
@@ -8144,7 +8127,7 @@
     try {
       const globalKey = "__XIAOCHAO_DIAGNOSTIC_INSTANCES__";
       const instance = {
-        version: "1.4.32.6",
+        version: "1.5.0",
         id: "diag-" + Date.now() + "-" + Math.random().toString(36).slice(2, 8),
         startedAt: new Date().toISOString()
       };
@@ -9258,7 +9241,7 @@
   = window[_0x5e0302(791)],{
     openWindow: _0x5bcb47, json2html: _0x5b0b37, array2table: _0xef5269
   }
-  = window[_0x5e0302(791)], _0x2d3528 = C3rHCNrFDgLTzq(); let _0x44f35b = null; const _0x1139bb = " " + "1.4.32.6"; function Init() {
+  = window[_0x5e0302(791)], _0x2d3528 = C3rHCNrFDgLTzq(); let _0x44f35b = null; const _0x1139bb = " " + "1.5.0"; function Init() {
     var e = _0x5e0302; return window[e(610)] = e(747), window[e(591)] = globalConfig[e(591)] || 0, window[e(782)](e(465),
     _0x31facc), new Promise(((t, n) =>{
       var i = e; Promise[i(434)]([new Promise((e =>{

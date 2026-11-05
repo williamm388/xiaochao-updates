@@ -1,9 +1,9 @@
 {
   "name": "三國殺打小抄",
-  "version": "1.4.32.6",
-  "tag": "v1.4.32.6",
+  "version": "1.5.0",
+  "tag": "v1.5.0",
   "source_repository": "williamm388/xiaochao",
-  "source_commit": "1e37a36231f8b75262a3dffd03fd1459263f83ad",
-  "userscript_sha256": "339fbc0bd71e2335768cf8c540f16da0203f48c36d7e75f6e1ce9294ea995ce2",
-  "generated_at_utc": "2026-11-05T06:54:19.843Z"
+  "source_commit": "566152a087dd17b638671c0fe497b62e50d98cd8",
+  "userscript_sha256": "2088210b8f0a6a8c497c5d71df4d78897c1c4e2b3840a287fbe71360ab2c466e",
+  "generated_at_utc": "2026-11-05T07:20:06.155Z"
 }
