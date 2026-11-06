@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         三国杀打小抄 RC
 // @namespace    williamm388.xiaochao.rc
-// @version      1.5.1
+// @version      1.5.2
 // @icon64       https://ts3.tc.mm.bing.net/th/id/ODF.HcIfqnk4n-lbffGcaqDC2w?w=32&h=32&qlt=90&pcl=fffffa&o=6&pid=1.2
 // @match        *://game.4399iw2.com/yxsgs/*
 // @match        *://my.4399.com/yxsgs/*
@@ -4924,11 +4924,68 @@
       const e = n; Array[e(944)](gameRecord[e(1032)], (t => i[e(654)](t))), laya[e(1067)](e(749), 1e3);
     }), 0);
   }
-  // v1.5.1: Paid 200-yuanbao tree. Never send a purchase without a verified
+  // v1.5.2: Paid 200-yuanbao tree. Never send a purchase without a verified
   // eligible game state, a per-account/day transaction journal and cross-tab lock.
+  // RC2: use the visible, persisted setting. Old versions seeded
+  // AUTO_KANSHU_SWITCH=false even when RC1 showed the new UI as ON.
+  function _xiaochaoTreeEnabled() {
+    const input = document.getElementById("autoKanShuSwitch");
+    if (input && typeof input.checked === "boolean") return !!input.checked;
+    try {
+      const saved = JSON.parse(localStorage.getItem("sgs_xiaochao_switch_settings_v3") || "null");
+      if (saved && typeof saved.autoKanShuSwitch === "boolean") return saved.autoKanShuSwitch;
+    } catch (_) {}
+    return false; // no silent purchase before settings initialization
+  }
+  const _xiaochaoKanshuState = { latest: "not-run", at: null, history: [] };
+  function _xiaochaoKanshuLog(status) {
+    const entry = { at: new Date().toISOString(), status: String(status || "unknown") };
+    _xiaochaoKanshuState.latest = entry.status;
+    _xiaochaoKanshuState.at = entry.at;
+    _xiaochaoKanshuState.history.push(entry);
+    if (_xiaochaoKanshuState.history.length > 20) _xiaochaoKanshuState.history.shift();
+    console.info("[xiaochao][自动砍树]", entry.status);
+    try {
+      const debug = window.__XIAOCHAO_DEBUG__;
+      if (debug && Array.isArray(debug.trace))
+        debug.trace.push({ type: "AUTO_KANSHU", ts: Date.now(), result: entry.status });
+    } catch (_) {}
+  }
+  try {
+    window.__XIAOCHAO_KANSHU_DIAG__ = {
+      snapshot() {
+        const input = document.getElementById("autoKanShuSwitch");
+        let journalState = "none";
+        try {
+          const account = String(_0x31412b.userID || "");
+          if (/^\d+$/.test(account)) {
+            const date = new Intl.DateTimeFormat("en-CA", {
+              timeZone: "Asia/Shanghai", year: "numeric", month: "2-digit", day: "2-digit"
+            }).format(new Date());
+            const raw = localStorage.getItem("sgs_xiaochao_kanshu_v1:" + account + ":" + date);
+            if (raw) {
+              try { journalState = JSON.parse(raw).state || "recorded"; }
+              catch (_) { journalState = "recorded"; }
+            }
+          }
+        } catch (_) { journalState = "unavailable"; }
+        return {
+          version: "1.5.2",
+          visibleEnabled: input ? !!input.checked : null,
+          effectiveEnabled: _xiaochaoTreeEnabled(),
+          legacyConfigEnabled: !!globalConfig.autoKanShuSwitch,
+          crossTabLockAvailable: !!(navigator.locks && typeof navigator.locks.request === "function"),
+          journalState,
+          latest: _xiaochaoKanshuState.latest,
+          updatedAt: _xiaochaoKanshuState.at,
+          history: _xiaochaoKanshuState.history.slice()
+        };
+      }
+    };
+  } catch (_) {}
+
   async function kanshu() {
-    const enabledInput = document.getElementById("autoKanShuSwitch");
-    if (!globalConfig.autoKanShuSwitch || (enabledInput && !enabledInput.checked)) return "disabled";
+    if (!_xiaochaoTreeEnabled()) return "disabled";
     const account = String(_0x31412b.userID || "");
     if (!/^\d+$/.test(account)) return "account-unavailable";
     if (!navigator.locks || typeof navigator.locks.request !== "function") return "no-cross-tab-lock";
@@ -4943,8 +5000,7 @@
     return navigator.locks.request("sgs_xiaochao_kanshu:" + account,
       { mode: "exclusive", ifAvailable: true }, async lock => {
         if (!lock) return "already-running";
-        if (!globalConfig.autoKanShuSwitch ||
-            (enabledInput && !enabledInput.checked)) return "disabled";
+        if (!_xiaochaoTreeEnabled()) return "disabled";
         try {
           if (localStorage.getItem(journalKey)) return "already-attempted";
         } catch (_) { return "storage-unavailable"; }
@@ -4952,7 +5008,7 @@
         const welfare = laya.class("WelfareManger");
         const bless = laya.class("BlessManager");
         const shop = laya.class("GameShopManager");
-        const goods = laya.class("GameGoodsManager");
+        const goods = laya.get("GameGoodsManager");
         if (!welfare || !bless || !shop || !goods ||
             typeof welfare.ReqJbpTreeUsing !== "function" ||
             typeof welfare.ReqJbpAwd !== "function" ||
@@ -5005,9 +5061,14 @@
 
   // Run only after login finishes. Native game owns the reward popup/animation.
   async function _xiaochaoAutoKanShuOnce() {
-    try { return await kanshu(); }
-    catch (error) {
+    _xiaochaoKanshuLog("started");
+    try {
+      const result = await kanshu();
+      _xiaochaoKanshuLog(result);
+      return result;
+    } catch (error) {
       console.warn("[xiaochao] 自动砍树: check failed; no paid retry", error);
+      _xiaochaoKanshuLog("check-failed");
       return "check-failed";
     }
   }
@@ -7820,7 +7881,7 @@
       let current;
       for (let tries = 0; tries < 12; tries++) {
         current = { id: _xiaochaoCaptureSessionID, startedAt: _xiaochaoCaptureStartedAt,
-          savedAt: new Date().toISOString(), version: "1.5.1", packets, events, lastDom };
+          savedAt: new Date().toISOString(), version: "1.5.2", packets, events, lastDom };
         if (JSON.stringify(current).length <= 325000) break;
         packets = packets.slice(Math.ceil(packets.length * 0.2));
         events = events.slice(Math.ceil(events.length * 0.2));
@@ -7860,10 +7921,10 @@
     // In-memory evidence remains exportable when storage is unavailable/disabled.
     if (!sessions.some(s => s.id === _xiaochaoCaptureSessionID)) {
       sessions.push({ id:_xiaochaoCaptureSessionID, startedAt:_xiaochaoCaptureStartedAt,
-        version:"1.5.1", packets:_xiaochaoPacketBuffer.slice(),
+        version:"1.5.2", packets:_xiaochaoPacketBuffer.slice(),
         events:_xiaochaoDebugTraceBuffer.filter(e => e && e.type !== "DOM_DIAGNOSTIC_STATE").slice(-600) });
     }
-    const payload = { exportedAt:new Date().toISOString(), version:"1.5.1",
+    const payload = { exportedAt:new Date().toISOString(), version:"1.5.2",
       scope:"Local-only game-event diagnostics; sessions include live games and any subsequent replays.",
       captureEnabled:_xiaochaoCaptureEnabled, storageError:_xiaochaoCaptureError || null,
       sessions, currentSnapshot:_xiaochaoDebugSnapshot() };
@@ -7947,7 +8008,7 @@
       })) : [];
       return {
         timestamp: new Date().toISOString(),
-        version: "1.5.1",
+        version: "1.5.2",
         room: {
           myID: (() => { try { return room && room.myID; } catch (_) { return undefined; } })(),
           mySeats: Array.isArray(room && room.mySeats) ? room.mySeats.slice() : [],
@@ -7992,7 +8053,7 @@
         }))
       };
     } catch (error) {
-      return { timestamp: new Date().toISOString(), version: "1.5.1", snapshotError: String(error) };
+      return { timestamp: new Date().toISOString(), version: "1.5.2", snapshotError: String(error) };
     }
   }
 
@@ -8020,7 +8081,7 @@
   function _xiaochaoInstallDebugAPI() {
     try {
       window.__XIAOCHAO_DEBUG__ = {
-        version: "1.5.1",
+        version: "1.5.2",
         trace: _xiaochaoDebugTraceBuffer,
         snapshot: _xiaochaoDebugSnapshot,
         clear() {
@@ -8034,7 +8095,7 @@
         exportTrace() {
           const payload = {
             exportedAt: new Date().toISOString(),
-            version: "1.5.1",
+            version: "1.5.2",
             snapshot: _xiaochaoDebugSnapshot(),
             liveDiagnostic: (typeof _xiaochaoDiagState === "function" ? _xiaochaoDiagState("export") : null),
             trace: _xiaochaoDebugTraceBuffer.slice()
@@ -8202,7 +8263,7 @@
     try {
       const globalKey = "__XIAOCHAO_DIAGNOSTIC_INSTANCES__";
       const instance = {
-        version: "1.5.1",
+        version: "1.5.2",
         id: "diag-" + Date.now() + "-" + Math.random().toString(36).slice(2, 8),
         startedAt: new Date().toISOString()
       };
@@ -9316,7 +9377,7 @@
   = window[_0x5e0302(791)],{
     openWindow: _0x5bcb47, json2html: _0x5b0b37, array2table: _0xef5269
   }
-  = window[_0x5e0302(791)], _0x2d3528 = C3rHCNrFDgLTzq(); let _0x44f35b = null; const _0x1139bb = " " + "1.5.1"; function Init() {
+  = window[_0x5e0302(791)], _0x2d3528 = C3rHCNrFDgLTzq(); let _0x44f35b = null; const _0x1139bb = " " + "1.5.2"; function Init() {
     var e = _0x5e0302; return window[e(610)] = e(747), window[e(591)] = globalConfig[e(591)] || 0, window[e(782)](e(465),
     _0x31facc), new Promise(((t, n) =>{
       var i = e; Promise[i(434)]([new Promise((e =>{
