@@ -1,2 +1,2 @@
-b35c9f0d38e5cad17f76a2e7a6ac5fd35624a59a9eb9d012f8925d65595b2edf  xiaochao-rc.user.js
-d6af9a020f82255d2dd82c4bc80556ad2dd2e96dfb1df8fdfb62e08ce693885c  xiaochao-rc.meta.js
+1954ef56d845ae14109c6ee239fd19d747ad277c7966a995354908acb6aa1433  xiaochao-rc.user.js
+2cf23e429801fdd739e4356a99fa5999fd71e6131b2efba81cd77795fdb09df1  xiaochao-rc.meta.js
