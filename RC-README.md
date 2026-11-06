@@ -1,28 +1,24 @@
 # 三國殺打小抄 — RC 測試渠道
 
-這是 **非正式測試版本**，並不影響 `main` 分支的正式 Tampermonkey 更新源。
+本分支只提供 **非正式測試版**，不影響正式 `main` 及 Tampermonkey 穩定更新來源。
 
-## 一鍵安裝 RC
+## 一鍵安裝與更新
 
-https://raw.githubusercontent.com/williamm388/xiaochao-updates/rc/xiaochao-rc.user.js
+- 安裝 URL：https://raw.githubusercontent.com/williamm388/xiaochao-updates/rc/xiaochao-rc.user.js
+- Metadata：https://raw.githubusercontent.com/williamm388/xiaochao-updates/rc/xiaochao-rc.meta.js
+- 目前版本：**v1.5.3 RC3**
+- 僅測試版使用獨立的 @name 和 @namespace。**正式版與 RC 不可同時啟用**。
 
-- RC 腳本：`xiaochao-rc.user.js`
-- RC 更新 metadata：`xiaochao-rc.meta.js`
-- RC 分支：`rc`
-- 目前版本：`1.5.2`
+## RC3 修正及驗收
 
-RC 使用獨立的 `@name`（三国杀打小抄 RC）及 `@namespace`（williamm388.xiaochao.rc），因此正式版和測試版可以同時保留在 Tampermonkey，但**絕不可同時啟用**。安裝後先停用正式版再啟用 RC；測試完可反過來切換。
+- 修正 v1.5.1、v1.5.2 自動砍樹入口位於**未被執行的 login() 函數**的問題。
+- 現在獨立等待遊戲管理器就緒，載入後最多發送一次領取流程；不在同頁無限重試。
+- 移除本機「每天只嘗試一次」的交易日誌及跨 Tab 鎖，改由遊戲伺服器 `JbpUserData.Status` 判斷是否已領取。不同 Tab 的併發交易安全性**未獲驗證**。
+- 新增診斷：在 DevTools Console 執行 `window.__XIAOCHAO_KANSHU_DIAG__?.snapshot()`，可查看 ready、serverStatus、hasBlessItem 和 latest。
+- 自動消費與彈窗顯示尚未通過真實遊戲驗收。**測試有可能實際扣除 200 元寶**，請只使用可接受該消費的帳戶。
 
-## 自動更新
+## 切換渠道
 
-RC 安裝後只從 `rc` 分支檢查更新；正式版使用 `main` 分支。Tampermonkey Dashboard → Settings → Userscript Update 建議檢查間隔為 Every 6 Hours 並啟用 Automatic installation。
+正式版：https://raw.githubusercontent.com/williamm388/xiaochao-updates/main/xiaochao.user.js
 
-## v1.5.2 RC2 注意事項
-
-- 修正 RC1「畫面顯示開啟、舊設定仍為關閉」問題，以及物品管理器的取得方式。\n- 提供唯讀診斷：`window.__XIAOCHAO_KANSHU_DIAG__?.snapshot()`，不包含帳戶 ID。\n- 「自动砍树」預設開啟，登入後仍會嘗試執行真實消費流程。
-- 涉及**真實 200 元寶消費**。目前只有自動化靜態測試，未完成真實扣款、成功領獎或每日重置驗收。
-- 只建議在可承受該消費的測試帳戶使用。
-- 跨分頁鎖及本機單日交易日誌可減少重複請求，但不能替代伺服器交易冪等性驗證。結果不明時不自動重試。
-- 如需停止，停用 RC 腳本並重新啟用正式版。未驗證完整遊戲安全前，不要合併或觸發正式發布。
-
-正式版安裝 URL：https://raw.githubusercontent.com/williamm388/xiaochao-updates/main/xiaochao.user.js
+Tampermonkey 可同時保存兩份腳本，但遊戲頁面只能啟用其中一份。兩個渠道更新互不影響。
