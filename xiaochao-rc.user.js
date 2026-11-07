@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         三国杀打小抄 RC
 // @namespace    williamm388.xiaochao.rc
-// @version      1.5.4
+// @version      1.5.4.1
 // @icon64       https://ts3.tc.mm.bing.net/th/id/ODF.HcIfqnk4n-lbffGcaqDC2w?w=32&h=32&qlt=90&pcl=fffffa&o=6&pid=1.2
 // @match        *://game.4399iw2.com/yxsgs/*
 // @match        *://my.4399.com/yxsgs/*
@@ -4880,7 +4880,7 @@
   }
   async function login() {
     const e = _0x23cefa; try {
-      if (!_0x31412b[e(759)] || _0x508085.includes(_0x31412b[e(759)]))return; laya.on("SHOW_VIP", laya[e(730)],
+      if (!_0x31412b[e(759)] || _0x508085.includes(_0x31412b[e(759)]))return; _xiaochaoTreeLoginObserved("native-login"); laya.on("SHOW_VIP", laya[e(730)],
       (function () {
         const t = e; null == this || this[t(1188)](t(621));
       })), window[e(973)][e(744)]()[e(804)](e(1103)) && laya.on("LOG_VIP", window, (function () {
@@ -4935,7 +4935,19 @@
     } catch (_) {}
     return false;
   }
-  const _xiaochaoKanshuState = { latest: "not-run", at: null, history: [] };
+  const _xiaochaoKanshuState = {
+    latest: "not-run", at: null, history: [],
+    loginObserved: false, loginEvents: 0, loginSource: null,
+    readinessChecks: 0, lastReadinessAt: null, lastReadinessReason: null
+  };
+  let _xiaochaoTreeWake = null;
+  // Mirror the existing auto-sign flow: wake the tree checker after native login.
+  function _xiaochaoTreeLoginObserved(source = "login") {
+    _xiaochaoKanshuState.loginObserved = true;
+    _xiaochaoKanshuState.loginEvents++;
+    _xiaochaoKanshuState.loginSource = source;
+    if (typeof _xiaochaoTreeWake === "function") setTimeout(_xiaochaoTreeWake, 0);
+  }
   function _xiaochaoKanshuLog(status) {
     const entry = { at: new Date().toISOString(), status: String(status || "unknown") };
     _xiaochaoKanshuState.latest = entry.status;
@@ -4951,7 +4963,10 @@
   }
   // Read only manager readiness; no purchase is attempted in this probe.
   function _xiaochaoTreeRuntime() {
-    const accountReady = /^\d+$/.test(String(_0x31412b.userID || ""));
+    // Account ids are not guaranteed to be numeric; informational only.
+    // A native server response (JbpUserData.Status) controls paid eligibility.
+    const accountReady = !!String(_0x31412b.userID || "").trim();
+    const layaReady = typeof Laya !== "undefined" && !!Laya;
     const bridgeReady = typeof laya !== "undefined" && !!laya && typeof laya.get === "function";
     const managerNames = {
       welfare: "WelfareManger",
@@ -4962,7 +4977,7 @@
     const managers = { welfare: false, bless: false, shop: false, goods: false };
     const instances = { welfare: null, bless: null, shop: null, goods: null };
     const errors = [];
-    if (bridgeReady) {
+    if (bridgeReady && layaReady) {
       for (const key of Object.keys(managerNames)) {
         try {
           instances[key] = laya.get(managerNames[key]) || null;
@@ -4979,7 +4994,7 @@
       typeof welfare.ReqJbpAwd === "function" &&
       typeof shop.BuySingleItem === "function" &&
       typeof goods.GetGoodsByBaseID === "function");
-    return { accountReady, bridgeReady, managers, managersReady, apiReady, errors, ...instances };
+    return { accountReady, layaReady, bridgeReady, managers, managersReady, apiReady, errors, ...instances };
   }
   try {
     window.__XIAOCHAO_KANSHU_DIAG__ = {
@@ -4989,11 +5004,18 @@
         const welfare = runtime.welfare;
         const bless = runtime.bless;
         return {
-          version: "1.5.4",
+          version: "1.5.4.1",
           visibleEnabled: input ? !!input.checked : null,
           effectiveEnabled: _xiaochaoTreeEnabled(),
           legacyConfigEnabled: !!globalConfig.autoKanShuSwitch,
           accountReady: runtime.accountReady,
+          layaReady: runtime.layaReady,
+          loginObserved: _xiaochaoKanshuState.loginObserved,
+          loginEvents: _xiaochaoKanshuState.loginEvents,
+          loginSource: _xiaochaoKanshuState.loginSource,
+          readinessChecks: _xiaochaoKanshuState.readinessChecks,
+          lastReadinessAt: _xiaochaoKanshuState.lastReadinessAt,
+          lastReadinessReason: _xiaochaoKanshuState.lastReadinessReason,
           bridgeReady: runtime.bridgeReady,
           managers: runtime.managers,
           managersReady: runtime.managersReady,
@@ -5016,7 +5038,6 @@
   async function kanshu() {
     if (!_xiaochaoTreeEnabled()) return "disabled";
     const runtime = _xiaochaoTreeRuntime();
-    if (!runtime.accountReady) return "account-unavailable";
     if (!runtime.apiReady) return "api-unavailable";
     const { welfare, bless, shop, goods } = runtime;
 
@@ -5061,28 +5082,37 @@
       return "check-failed";
     }
   }
+  // Use the native login/sign-in wakeups plus lightweight polling. Do not
+  // expire the readiness watcher before the game engine has loaded.
+  // A transaction outcome is still attempted at most once per page.
   function _xiaochaoStartTreeAfterGameReady() {
     let finished = false;
     let timer = null;
     let ticks = 0;
     const check = () => {
       if (finished) return;
-      ticks += 1;
+      ticks++;
       const runtime = _xiaochaoTreeRuntime();
-      if (_xiaochaoTreeEnabled() && runtime.accountReady && runtime.apiReady) {
+      _xiaochaoKanshuState.readinessChecks = ticks;
+      _xiaochaoKanshuState.lastReadinessAt = new Date().toISOString();
+      _xiaochaoKanshuState.lastReadinessReason = !runtime.layaReady
+        ? "laya-not-ready"
+        : !runtime.bridgeReady
+          ? "bridge-not-ready"
+          : !runtime.apiReady
+            ? "managers-not-ready"
+            : null;
+      if (_xiaochaoTreeEnabled() && runtime.apiReady) {
         finished = true;
+        _xiaochaoTreeWake = null;
         if (timer != null) clearInterval(timer);
         void _xiaochaoAutoKanShuOnce();
         return;
       }
       if (ticks === 1) _xiaochaoKanshuLog("waiting-game-ready");
-      if (ticks >= 100) {
-        finished = true;
-        if (timer != null) clearInterval(timer);
-        _xiaochaoKanshuLog("game-ready-timeout");
-      }
     };
-    timer = setInterval(check, 1500);
+    _xiaochaoTreeWake = check;
+    timer = setInterval(check, 5000);
     setTimeout(check, 1000);
   }
   _xiaochaoStartTreeAfterGameReady();
@@ -5107,7 +5137,7 @@
   }
   async function _0x21bfcf(e =!1) {
     var t, n, i, o; const a = _0x23cefa; try {
-      await sleep(1e4); const l = laya.get("DailySignNewView", void 0, 1e4); if (2 == (null == l ? void 0: l[a(1003)]))for (let t = 0; t < l.itemList[a(586)]; t++) {
+      await sleep(1e4); _xiaochaoTreeLoginObserved("auto-sign"); const l = laya.get("DailySignNewView", void 0, 1e4); if (2 == (null == l ? void 0: l[a(1003)]))for (let t = 0; t < l.itemList[a(586)]; t++) {
         let n = l[a(840)][t][a(593)].ID; 9020101 != n && n.toString().startsWith("90") && e || 1 == l[a(840)][t].type && (l[a(840)][t][a(787)](),
         _0x376cf5("自动签到已完成<br>如需关闭，可在小抄设置中关闭"), await sleep(500));
       }
@@ -7896,7 +7926,7 @@
       let current;
       for (let tries = 0; tries < 12; tries++) {
         current = { id: _xiaochaoCaptureSessionID, startedAt: _xiaochaoCaptureStartedAt,
-          savedAt: new Date().toISOString(), version: "1.5.4", packets, events, lastDom };
+          savedAt: new Date().toISOString(), version: "1.5.4.1", packets, events, lastDom };
         if (JSON.stringify(current).length <= 325000) break;
         packets = packets.slice(Math.ceil(packets.length * 0.2));
         events = events.slice(Math.ceil(events.length * 0.2));
@@ -7936,10 +7966,10 @@
     // In-memory evidence remains exportable when storage is unavailable/disabled.
     if (!sessions.some(s => s.id === _xiaochaoCaptureSessionID)) {
       sessions.push({ id:_xiaochaoCaptureSessionID, startedAt:_xiaochaoCaptureStartedAt,
-        version:"1.5.4", packets:_xiaochaoPacketBuffer.slice(),
+        version:"1.5.4.1", packets:_xiaochaoPacketBuffer.slice(),
         events:_xiaochaoDebugTraceBuffer.filter(e => e && e.type !== "DOM_DIAGNOSTIC_STATE").slice(-600) });
     }
-    const payload = { exportedAt:new Date().toISOString(), version:"1.5.4",
+    const payload = { exportedAt:new Date().toISOString(), version:"1.5.4.1",
       scope:"Local-only game-event diagnostics; sessions include live games and any subsequent replays.",
       captureEnabled:_xiaochaoCaptureEnabled, storageError:_xiaochaoCaptureError || null,
       sessions, currentSnapshot:_xiaochaoDebugSnapshot() };
@@ -8023,7 +8053,7 @@
       })) : [];
       return {
         timestamp: new Date().toISOString(),
-        version: "1.5.4",
+        version: "1.5.4.1",
         room: {
           myID: (() => { try { return room && room.myID; } catch (_) { return undefined; } })(),
           mySeats: Array.isArray(room && room.mySeats) ? room.mySeats.slice() : [],
@@ -8068,7 +8098,7 @@
         }))
       };
     } catch (error) {
-      return { timestamp: new Date().toISOString(), version: "1.5.4", snapshotError: String(error) };
+      return { timestamp: new Date().toISOString(), version: "1.5.4.1", snapshotError: String(error) };
     }
   }
 
@@ -8096,7 +8126,7 @@
   function _xiaochaoInstallDebugAPI() {
     try {
       window.__XIAOCHAO_DEBUG__ = {
-        version: "1.5.4",
+        version: "1.5.4.1",
         trace: _xiaochaoDebugTraceBuffer,
         snapshot: _xiaochaoDebugSnapshot,
         clear() {
@@ -8110,7 +8140,7 @@
         exportTrace() {
           const payload = {
             exportedAt: new Date().toISOString(),
-            version: "1.5.4",
+            version: "1.5.4.1",
             snapshot: _xiaochaoDebugSnapshot(),
             liveDiagnostic: (typeof _xiaochaoDiagState === "function" ? _xiaochaoDiagState("export") : null),
             trace: _xiaochaoDebugTraceBuffer.slice()
@@ -8278,7 +8308,7 @@
     try {
       const globalKey = "__XIAOCHAO_DIAGNOSTIC_INSTANCES__";
       const instance = {
-        version: "1.5.4",
+        version: "1.5.4.1",
         id: "diag-" + Date.now() + "-" + Math.random().toString(36).slice(2, 8),
         startedAt: new Date().toISOString()
       };
@@ -9392,7 +9422,7 @@
   = window[_0x5e0302(791)],{
     openWindow: _0x5bcb47, json2html: _0x5b0b37, array2table: _0xef5269
   }
-  = window[_0x5e0302(791)], _0x2d3528 = C3rHCNrFDgLTzq(); let _0x44f35b = null; const _0x1139bb = " " + "1.5.4"; function Init() {
+  = window[_0x5e0302(791)], _0x2d3528 = C3rHCNrFDgLTzq(); let _0x44f35b = null; const _0x1139bb = " " + "1.5.4.1"; function Init() {
     var e = _0x5e0302; return window[e(610)] = e(747), window[e(591)] = globalConfig[e(591)] || 0, window[e(782)](e(465),
     _0x31facc), new Promise(((t, n) =>{
       var i = e; Promise[i(434)]([new Promise((e =>{
