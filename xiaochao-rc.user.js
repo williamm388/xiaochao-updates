@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         三国杀打小抄 RC
 // @namespace    williamm388.xiaochao.rc
-// @version      1.5.4.1
+// @version      1.5.5
 // @icon64       https://ts3.tc.mm.bing.net/th/id/ODF.HcIfqnk4n-lbffGcaqDC2w?w=32&h=32&qlt=90&pcl=fffffa&o=6&pid=1.2
 // @match        *://game.4399iw2.com/yxsgs/*
 // @match        *://my.4399.com/yxsgs/*
@@ -4924,8 +4924,9 @@
       const e = n; Array[e(944)](gameRecord[e(1032)], (t => i[e(654)](t))), laya[e(1067)](e(749), 1e3);
     }), 0);
   }
-  // RC4: native manager *instances* must be read via laya.get().
-  // laya.class() resolves constructors/prototypes, not live manager state.
+  // RC5: match v3.5.0 native manager API. laya.class() retrieves the
+  // manager service; laya.get() tries to instantiate it and can throw
+  // TypeError: ... is not a constructor. Never construct these managers.
   function _xiaochaoTreeEnabled() {
     const input = document.getElementById("autoKanShuSwitch");
     if (input && typeof input.checked === "boolean") return !!input.checked;
@@ -4967,7 +4968,7 @@
     // A native server response (JbpUserData.Status) controls paid eligibility.
     const accountReady = !!String(_0x31412b.userID || "").trim();
     const layaReady = typeof Laya !== "undefined" && !!Laya;
-    const bridgeReady = typeof laya !== "undefined" && !!laya && typeof laya.get === "function";
+    const bridgeReady = typeof laya !== "undefined" && !!laya && typeof laya.class === "function";
     const managerNames = {
       welfare: "WelfareManger",
       bless: "BlessManager",
@@ -4980,7 +4981,7 @@
     if (bridgeReady && layaReady) {
       for (const key of Object.keys(managerNames)) {
         try {
-          instances[key] = laya.get(managerNames[key]) || null;
+          instances[key] = laya.class(managerNames[key]) || null;
           managers[key] = !!instances[key];
         } catch (error) {
           errors.push(key + ": " + String(error && error.message || error).slice(0, 160));
@@ -5004,7 +5005,7 @@
         const welfare = runtime.welfare;
         const bless = runtime.bless;
         return {
-          version: "1.5.4.1",
+          version: "1.5.5",
           visibleEnabled: input ? !!input.checked : null,
           effectiveEnabled: _xiaochaoTreeEnabled(),
           legacyConfigEnabled: !!globalConfig.autoKanShuSwitch,
@@ -7926,7 +7927,7 @@
       let current;
       for (let tries = 0; tries < 12; tries++) {
         current = { id: _xiaochaoCaptureSessionID, startedAt: _xiaochaoCaptureStartedAt,
-          savedAt: new Date().toISOString(), version: "1.5.4.1", packets, events, lastDom };
+          savedAt: new Date().toISOString(), version: "1.5.5", packets, events, lastDom };
         if (JSON.stringify(current).length <= 325000) break;
         packets = packets.slice(Math.ceil(packets.length * 0.2));
         events = events.slice(Math.ceil(events.length * 0.2));
@@ -7966,10 +7967,10 @@
     // In-memory evidence remains exportable when storage is unavailable/disabled.
     if (!sessions.some(s => s.id === _xiaochaoCaptureSessionID)) {
       sessions.push({ id:_xiaochaoCaptureSessionID, startedAt:_xiaochaoCaptureStartedAt,
-        version:"1.5.4.1", packets:_xiaochaoPacketBuffer.slice(),
+        version:"1.5.5", packets:_xiaochaoPacketBuffer.slice(),
         events:_xiaochaoDebugTraceBuffer.filter(e => e && e.type !== "DOM_DIAGNOSTIC_STATE").slice(-600) });
     }
-    const payload = { exportedAt:new Date().toISOString(), version:"1.5.4.1",
+    const payload = { exportedAt:new Date().toISOString(), version:"1.5.5",
       scope:"Local-only game-event diagnostics; sessions include live games and any subsequent replays.",
       captureEnabled:_xiaochaoCaptureEnabled, storageError:_xiaochaoCaptureError || null,
       sessions, currentSnapshot:_xiaochaoDebugSnapshot() };
@@ -8053,7 +8054,7 @@
       })) : [];
       return {
         timestamp: new Date().toISOString(),
-        version: "1.5.4.1",
+        version: "1.5.5",
         room: {
           myID: (() => { try { return room && room.myID; } catch (_) { return undefined; } })(),
           mySeats: Array.isArray(room && room.mySeats) ? room.mySeats.slice() : [],
@@ -8098,7 +8099,7 @@
         }))
       };
     } catch (error) {
-      return { timestamp: new Date().toISOString(), version: "1.5.4.1", snapshotError: String(error) };
+      return { timestamp: new Date().toISOString(), version: "1.5.5", snapshotError: String(error) };
     }
   }
 
@@ -8126,7 +8127,7 @@
   function _xiaochaoInstallDebugAPI() {
     try {
       window.__XIAOCHAO_DEBUG__ = {
-        version: "1.5.4.1",
+        version: "1.5.5",
         trace: _xiaochaoDebugTraceBuffer,
         snapshot: _xiaochaoDebugSnapshot,
         clear() {
@@ -8140,7 +8141,7 @@
         exportTrace() {
           const payload = {
             exportedAt: new Date().toISOString(),
-            version: "1.5.4.1",
+            version: "1.5.5",
             snapshot: _xiaochaoDebugSnapshot(),
             liveDiagnostic: (typeof _xiaochaoDiagState === "function" ? _xiaochaoDiagState("export") : null),
             trace: _xiaochaoDebugTraceBuffer.slice()
@@ -8308,7 +8309,7 @@
     try {
       const globalKey = "__XIAOCHAO_DIAGNOSTIC_INSTANCES__";
       const instance = {
-        version: "1.5.4.1",
+        version: "1.5.5",
         id: "diag-" + Date.now() + "-" + Math.random().toString(36).slice(2, 8),
         startedAt: new Date().toISOString()
       };
@@ -9422,7 +9423,7 @@
   = window[_0x5e0302(791)],{
     openWindow: _0x5bcb47, json2html: _0x5b0b37, array2table: _0xef5269
   }
-  = window[_0x5e0302(791)], _0x2d3528 = C3rHCNrFDgLTzq(); let _0x44f35b = null; const _0x1139bb = " " + "1.5.4.1"; function Init() {
+  = window[_0x5e0302(791)], _0x2d3528 = C3rHCNrFDgLTzq(); let _0x44f35b = null; const _0x1139bb = " " + "1.5.5"; function Init() {
     var e = _0x5e0302; return window[e(610)] = e(747), window[e(591)] = globalConfig[e(591)] || 0, window[e(782)](e(465),
     _0x31facc), new Promise(((t, n) =>{
       var i = e; Promise[i(434)]([new Promise((e =>{
