@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         三国杀打小抄 RC
 // @namespace    williamm388.xiaochao.rc
-// @version      1.5.3
+// @version      1.5.4
 // @icon64       https://ts3.tc.mm.bing.net/th/id/ODF.HcIfqnk4n-lbffGcaqDC2w?w=32&h=32&qlt=90&pcl=fffffa&o=6&pid=1.2
 // @match        *://game.4399iw2.com/yxsgs/*
 // @match        *://my.4399.com/yxsgs/*
@@ -4924,10 +4924,8 @@
       const e = n; Array[e(944)](gameRecord[e(1032)], (t => i[e(654)](t))), laya[e(1067)](e(749), 1e3);
     }), 0);
   }
-  // v1.5.3: Paid 200-yuanbao tree. Never send a purchase without a verified
-  // eligible game state, a per-account/day transaction journal and cross-tab lock.
-  // RC2: use the visible, persisted setting. Old versions seeded
-  // AUTO_KANSHU_SWITCH=false even when RC1 showed the new UI as ON.
+  // RC4: native manager *instances* must be read via laya.get().
+  // laya.class() resolves constructors/prototypes, not live manager state.
   function _xiaochaoTreeEnabled() {
     const input = document.getElementById("autoKanShuSwitch");
     if (input && typeof input.checked === "boolean") return !!input.checked;
@@ -4935,7 +4933,7 @@
       const saved = JSON.parse(localStorage.getItem("sgs_xiaochao_switch_settings_v3") || "null");
       if (saved && typeof saved.autoKanShuSwitch === "boolean") return saved.autoKanShuSwitch;
     } catch (_) {}
-    return false; // no silent purchase before settings initialization
+    return false;
   }
   const _xiaochaoKanshuState = { latest: "not-run", at: null, history: [] };
   function _xiaochaoKanshuLog(status) {
@@ -4951,28 +4949,58 @@
         debug.trace.push({ type: "AUTO_KANSHU", ts: Date.now(), result: entry.status });
     } catch (_) {}
   }
+  // Read only manager readiness; no purchase is attempted in this probe.
+  function _xiaochaoTreeRuntime() {
+    const accountReady = /^\d+$/.test(String(_0x31412b.userID || ""));
+    const bridgeReady = typeof laya !== "undefined" && !!laya && typeof laya.get === "function";
+    const managerNames = {
+      welfare: "WelfareManger",
+      bless: "BlessManager",
+      shop: "GameShopManager",
+      goods: "GameGoodsManager"
+    };
+    const managers = { welfare: false, bless: false, shop: false, goods: false };
+    const instances = { welfare: null, bless: null, shop: null, goods: null };
+    const errors = [];
+    if (bridgeReady) {
+      for (const key of Object.keys(managerNames)) {
+        try {
+          instances[key] = laya.get(managerNames[key]) || null;
+          managers[key] = !!instances[key];
+        } catch (error) {
+          errors.push(key + ": " + String(error && error.message || error).slice(0, 160));
+        }
+      }
+    }
+    const managersReady = Object.values(managers).every(Boolean);
+    const { welfare, shop, goods } = instances;
+    const apiReady = !!(managersReady &&
+      typeof welfare.ReqJbpTreeUsing === "function" &&
+      typeof welfare.ReqJbpAwd === "function" &&
+      typeof shop.BuySingleItem === "function" &&
+      typeof goods.GetGoodsByBaseID === "function");
+    return { accountReady, bridgeReady, managers, managersReady, apiReady, errors, ...instances };
+  }
   try {
     window.__XIAOCHAO_KANSHU_DIAG__ = {
       snapshot() {
         const input = document.getElementById("autoKanShuSwitch");
-        let serverStatus = null;
-        let hasBlessItem = null;
-        let managersReady = false;
-        try {
-          const welfare = laya.class("WelfareManger");
-          const bless = laya.class("BlessManager");
-          managersReady = !!(welfare && bless && laya.class("GameShopManager") && laya.get("GameGoodsManager"));
-          serverStatus = welfare && welfare.JbpUserData ? welfare.JbpUserData.Status : null;
-          hasBlessItem = bless ? !!bless.FreeBlessItemEnough : null;
-        } catch (_) {}
+        const runtime = _xiaochaoTreeRuntime();
+        const welfare = runtime.welfare;
+        const bless = runtime.bless;
         return {
-          version: "1.5.3",
+          version: "1.5.4",
           visibleEnabled: input ? !!input.checked : null,
           effectiveEnabled: _xiaochaoTreeEnabled(),
           legacyConfigEnabled: !!globalConfig.autoKanShuSwitch,
-          managersReady,
-          serverStatus,
-          hasBlessItem,
+          accountReady: runtime.accountReady,
+          bridgeReady: runtime.bridgeReady,
+          managers: runtime.managers,
+          managersReady: runtime.managersReady,
+          apiReady: runtime.apiReady,
+          managerErrors: runtime.errors,
+          serverStatus: welfare && welfare.JbpUserData ? welfare.JbpUserData.Status : null,
+          hasBlessItem: bless ? !!bless.FreeBlessItemEnough : null,
           localDailyQuota: false,
           latest: _xiaochaoKanshuState.latest,
           updatedAt: _xiaochaoKanshuState.at,
@@ -4982,27 +5010,16 @@
     };
   } catch (_) {}
 
-  // RC3: rely on the game's own JbpUserData.Status for daily eligibility.
-  // No local calendar-day quota or transaction journal is used. The startup
-  // scheduler invokes this only once per page load, and never retries after
-  // a network/transaction outcome is uncertain.
+  // The server owns daily eligibility; no local daily quota or cross-tab lock.
+  // The scheduler initiates at most one transaction per page, with no retry
+  // after a potentially paid/uncertain result.
   async function kanshu() {
     if (!_xiaochaoTreeEnabled()) return "disabled";
-    const account = String(_0x31412b.userID || "");
-    if (!/^\d+$/.test(account)) return "account-unavailable";
+    const runtime = _xiaochaoTreeRuntime();
+    if (!runtime.accountReady) return "account-unavailable";
+    if (!runtime.apiReady) return "api-unavailable";
+    const { welfare, bless, shop, goods } = runtime;
 
-    const welfare = laya.class("WelfareManger");
-    const bless = laya.class("BlessManager");
-    const shop = laya.class("GameShopManager");
-    const goods = laya.get("GameGoodsManager");
-    if (!welfare || !bless || !shop || !goods ||
-        typeof welfare.ReqJbpTreeUsing !== "function" ||
-        typeof welfare.ReqJbpAwd !== "function" ||
-        typeof shop.BuySingleItem !== "function" ||
-        typeof goods.GetGoodsByBaseID !== "function") return "api-unavailable";
-
-    // Native status 1 is the eligible state in the original reference code.
-    // Refresh the game state when it has not been populated yet.
     if (!welfare.JbpUserData || welfare.JbpUserData.Status == null) {
       welfare.ReqJbpTreeUsing();
     }
@@ -5017,8 +5034,6 @@
     if (!Number.isSafeInteger(level) || level < 0 || level > 1000) return "invalid-tree-level";
     const itemId = 12130001 + 100 * level;
 
-    // Purchase via the original game's own transaction flow. An unsuccessful
-    // check never triggers another purchase within the same page session.
     try {
       let owned = goods.GetGoodsByBaseID(itemId);
       if (!owned) {
@@ -5034,7 +5049,6 @@
     }
   }
 
-  // Run only after login finishes. Native game owns the reward popup/animation.
   async function _xiaochaoAutoKanShuOnce() {
     _xiaochaoKanshuLog("started");
     try {
@@ -5047,9 +5061,6 @@
       return "check-failed";
     }
   }
-  // RC3: independent boot path. The legacy login() helper is defined but
-  // never invoked in the bundled reference, so timers placed inside it do
-  // not run. Poll read-only game readiness; purchase is attempted once.
   function _xiaochaoStartTreeAfterGameReady() {
     let finished = false;
     let timer = null;
@@ -5057,25 +5068,14 @@
     const check = () => {
       if (finished) return;
       ticks += 1;
-      try {
-        const accountReady = /^\d+$/.test(String(_0x31412b.userID || ""));
-        const bridgeReady = typeof laya !== "undefined" && laya &&
-          typeof laya.class === "function" && typeof laya.get === "function";
-        const managersReady = bridgeReady &&
-          !!laya.class("WelfareManger") &&
-          !!laya.class("BlessManager") &&
-          !!laya.class("GameShopManager") &&
-          !!laya.get("GameGoodsManager");
-        if (_xiaochaoTreeEnabled() && accountReady && managersReady) {
-          finished = true;
-          if (timer != null) clearInterval(timer);
-          void _xiaochaoAutoKanShuOnce();
-          return;
-        }
-        if (ticks === 1) _xiaochaoKanshuLog("waiting-game-ready");
-      } catch (error) {
-        if (ticks === 1) _xiaochaoKanshuLog("waiting-game-ready");
+      const runtime = _xiaochaoTreeRuntime();
+      if (_xiaochaoTreeEnabled() && runtime.accountReady && runtime.apiReady) {
+        finished = true;
+        if (timer != null) clearInterval(timer);
+        void _xiaochaoAutoKanShuOnce();
+        return;
       }
+      if (ticks === 1) _xiaochaoKanshuLog("waiting-game-ready");
       if (ticks >= 100) {
         finished = true;
         if (timer != null) clearInterval(timer);
@@ -5086,6 +5086,7 @@
     setTimeout(check, 1000);
   }
   _xiaochaoStartTreeAfterGameReady();
+
   async function yueka() {
     var e; const t = _0x23cefa, n = laya[t(681)](t(1201)); if (n.updateAllInfo(), null == (e = n[t(912)]) ? void 0: e[t(628)]) {
       n[t(803)](); for (let e = 0; e < 4; e++)n[t(1047)](e);
@@ -7895,7 +7896,7 @@
       let current;
       for (let tries = 0; tries < 12; tries++) {
         current = { id: _xiaochaoCaptureSessionID, startedAt: _xiaochaoCaptureStartedAt,
-          savedAt: new Date().toISOString(), version: "1.5.3", packets, events, lastDom };
+          savedAt: new Date().toISOString(), version: "1.5.4", packets, events, lastDom };
         if (JSON.stringify(current).length <= 325000) break;
         packets = packets.slice(Math.ceil(packets.length * 0.2));
         events = events.slice(Math.ceil(events.length * 0.2));
@@ -7935,10 +7936,10 @@
     // In-memory evidence remains exportable when storage is unavailable/disabled.
     if (!sessions.some(s => s.id === _xiaochaoCaptureSessionID)) {
       sessions.push({ id:_xiaochaoCaptureSessionID, startedAt:_xiaochaoCaptureStartedAt,
-        version:"1.5.3", packets:_xiaochaoPacketBuffer.slice(),
+        version:"1.5.4", packets:_xiaochaoPacketBuffer.slice(),
         events:_xiaochaoDebugTraceBuffer.filter(e => e && e.type !== "DOM_DIAGNOSTIC_STATE").slice(-600) });
     }
-    const payload = { exportedAt:new Date().toISOString(), version:"1.5.3",
+    const payload = { exportedAt:new Date().toISOString(), version:"1.5.4",
       scope:"Local-only game-event diagnostics; sessions include live games and any subsequent replays.",
       captureEnabled:_xiaochaoCaptureEnabled, storageError:_xiaochaoCaptureError || null,
       sessions, currentSnapshot:_xiaochaoDebugSnapshot() };
@@ -8022,7 +8023,7 @@
       })) : [];
       return {
         timestamp: new Date().toISOString(),
-        version: "1.5.3",
+        version: "1.5.4",
         room: {
           myID: (() => { try { return room && room.myID; } catch (_) { return undefined; } })(),
           mySeats: Array.isArray(room && room.mySeats) ? room.mySeats.slice() : [],
@@ -8067,7 +8068,7 @@
         }))
       };
     } catch (error) {
-      return { timestamp: new Date().toISOString(), version: "1.5.3", snapshotError: String(error) };
+      return { timestamp: new Date().toISOString(), version: "1.5.4", snapshotError: String(error) };
     }
   }
 
@@ -8095,7 +8096,7 @@
   function _xiaochaoInstallDebugAPI() {
     try {
       window.__XIAOCHAO_DEBUG__ = {
-        version: "1.5.3",
+        version: "1.5.4",
         trace: _xiaochaoDebugTraceBuffer,
         snapshot: _xiaochaoDebugSnapshot,
         clear() {
@@ -8109,7 +8110,7 @@
         exportTrace() {
           const payload = {
             exportedAt: new Date().toISOString(),
-            version: "1.5.3",
+            version: "1.5.4",
             snapshot: _xiaochaoDebugSnapshot(),
             liveDiagnostic: (typeof _xiaochaoDiagState === "function" ? _xiaochaoDiagState("export") : null),
             trace: _xiaochaoDebugTraceBuffer.slice()
@@ -8277,7 +8278,7 @@
     try {
       const globalKey = "__XIAOCHAO_DIAGNOSTIC_INSTANCES__";
       const instance = {
-        version: "1.5.3",
+        version: "1.5.4",
         id: "diag-" + Date.now() + "-" + Math.random().toString(36).slice(2, 8),
         startedAt: new Date().toISOString()
       };
@@ -9391,7 +9392,7 @@
   = window[_0x5e0302(791)],{
     openWindow: _0x5bcb47, json2html: _0x5b0b37, array2table: _0xef5269
   }
-  = window[_0x5e0302(791)], _0x2d3528 = C3rHCNrFDgLTzq(); let _0x44f35b = null; const _0x1139bb = " " + "1.5.3"; function Init() {
+  = window[_0x5e0302(791)], _0x2d3528 = C3rHCNrFDgLTzq(); let _0x44f35b = null; const _0x1139bb = " " + "1.5.4"; function Init() {
     var e = _0x5e0302; return window[e(610)] = e(747), window[e(591)] = globalConfig[e(591)] || 0, window[e(782)](e(465),
     _0x31facc), new Promise(((t, n) =>{
       var i = e; Promise[i(434)]([new Promise((e =>{

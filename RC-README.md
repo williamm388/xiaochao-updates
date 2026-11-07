@@ -1,24 +1,26 @@
 # 三國殺打小抄 — RC 測試渠道
 
-本分支只提供 **非正式測試版**，不影響正式 `main` 及 Tampermonkey 穩定更新來源。
+本分支提供非正式測試版，不影響正式 `main` 及 Tampermonkey 穩定更新來源。
 
 ## 一鍵安裝與更新
 
 - 安裝 URL：https://raw.githubusercontent.com/williamm388/xiaochao-updates/rc/xiaochao-rc.user.js
 - Metadata：https://raw.githubusercontent.com/williamm388/xiaochao-updates/rc/xiaochao-rc.meta.js
-- 目前版本：**v1.5.3 RC3**
-- 僅測試版使用獨立的 @name 和 @namespace。**正式版與 RC 不可同時啟用**。
+- 目前版本：**v1.5.4 RC4**
+- 獨立 `@name` 和 `@namespace`；正式版與 RC **不可同時啟用**。
 
-## RC3 修正及驗收
+## RC4 修正與驗收
 
-- 修正 v1.5.1、v1.5.2 自動砍樹入口位於**未被執行的 login() 函數**的問題。
-- 現在獨立等待遊戲管理器就緒，載入後最多發送一次領取流程；不在同頁無限重試。
-- 移除本機「每天只嘗試一次」的交易日誌及跨 Tab 鎖，改由遊戲伺服器 `JbpUserData.Status` 判斷是否已領取。不同 Tab 的併發交易安全性**未獲驗證**。
-- 新增診斷：在 DevTools Console 執行 `window.__XIAOCHAO_KANSHU_DIAG__?.snapshot()`，可查看 ready、serverStatus、hasBlessItem 和 latest。
-- 自動消費與彈窗顯示尚未通過真實遊戲驗收。**測試有可能實際扣除 200 元寶**，請只使用可接受該消費的帳戶。
+- RC3 使用 `laya.class()` 取用部分遊戲管理器，和真正需要的管理器實例有別。RC4 統一由 `laya.get()` 取得原生管理器實例。
+- Diagnostics 增加 `accountReady`、`bridgeReady`、`managers`（四個 manager 各別狀態）、`apiReady`、`managerErrors`，避免只有單一 `managersReady`，無法定位問題。
+- 修正 mock：類別與實例分離；測試不再錯誤地由 `laya.class()` 回傳 manager instance。
+- 未變更遊戲模式、座位映射、牌記錄、其他設定；開關持久化保留。
+- 移除本機每日交易紀錄及跨 Tab 限額，依遊戲伺服器 `JbpUserData.Status` 判斷；單頁最多啟動一次交易，不對扣款結果不明狀況自動重試。
+- GitHub Actions 離線回歸、語法、SHA256、ZIP 解壓驗證：PASS；**實際遊戲交易驗證未通過／尚未進行**。
 
-## 切換渠道
+## 風險與測試
+
+自動砍樹可能實際消費 200 元寶，請只在可接受消費的帳戶測試。
+打開遊戲後在 Console 執行 `window.__XIAOCHAO_KANSHU_DIAG__?.snapshot()`；若仍無動作，請提供 `managers`、`apiReady`、`serverStatus` 及 `latest`。
 
 正式版：https://raw.githubusercontent.com/williamm388/xiaochao-updates/main/xiaochao.user.js
-
-Tampermonkey 可同時保存兩份腳本，但遊戲頁面只能啟用其中一份。兩個渠道更新互不影響。
