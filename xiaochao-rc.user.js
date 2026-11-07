@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         三国杀打小抄 RC
 // @namespace    williamm388.xiaochao.rc
-// @version      1.5.5
+// @version      1.5.6
 // @icon64       https://ts3.tc.mm.bing.net/th/id/ODF.HcIfqnk4n-lbffGcaqDC2w?w=32&h=32&qlt=90&pcl=fffffa&o=6&pid=1.2
 // @match        *://game.4399iw2.com/yxsgs/*
 // @match        *://my.4399.com/yxsgs/*
@@ -4990,12 +4990,16 @@
     }
     const managersReady = Object.values(managers).every(Boolean);
     const { welfare, shop, goods } = instances;
-    const apiReady = !!(managersReady &&
-      typeof welfare.ReqJbpTreeUsing === "function" &&
-      typeof welfare.ReqJbpAwd === "function" &&
-      typeof shop.BuySingleItem === "function" &&
-      typeof goods.GetGoodsByBaseID === "function");
-    return { accountReady, layaReady, bridgeReady, managers, managersReady, apiReady, errors, ...instances };
+    // RC6: expose method readiness separately. Missing claim/purchase APIs
+    // must not block a read-only server eligibility check.
+    const apiMethods = {
+      statusQuery: typeof welfare?.ReqJbpTreeUsing === "function",
+      claim: typeof welfare?.ReqJbpAwd === "function",
+      purchase: typeof shop?.BuySingleItem === "function",
+      inventory: typeof goods?.GetGoodsByBaseID === "function"
+    };
+    const apiReady = managersReady && Object.values(apiMethods).every(Boolean);
+    return { accountReady, layaReady, bridgeReady, managers, managersReady, apiReady, apiMethods, errors, ...instances };
   }
   try {
     window.__XIAOCHAO_KANSHU_DIAG__ = {
@@ -5005,7 +5009,7 @@
         const welfare = runtime.welfare;
         const bless = runtime.bless;
         return {
-          version: "1.5.5",
+          version: "1.5.6",
           visibleEnabled: input ? !!input.checked : null,
           effectiveEnabled: _xiaochaoTreeEnabled(),
           legacyConfigEnabled: !!globalConfig.autoKanShuSwitch,
@@ -5021,6 +5025,7 @@
           managers: runtime.managers,
           managersReady: runtime.managersReady,
           apiReady: runtime.apiReady,
+          apiMethods: runtime.apiMethods,
           managerErrors: runtime.errors,
           serverStatus: welfare && welfare.JbpUserData ? welfare.JbpUserData.Status : null,
           hasBlessItem: bless ? !!bless.FreeBlessItemEnough : null,
@@ -5039,26 +5044,41 @@
   async function kanshu() {
     if (!_xiaochaoTreeEnabled()) return "disabled";
     const runtime = _xiaochaoTreeRuntime();
-    if (!runtime.apiReady) return "api-unavailable";
-    const { welfare, bless, shop, goods } = runtime;
+    if (!runtime.managersReady) return "managers-unavailable";
+    const { welfare, bless, shop, goods, apiMethods } = runtime;
 
-    if (!welfare.JbpUserData || welfare.JbpUserData.Status == null) {
-      welfare.ReqJbpTreeUsing();
+    // Original v3.5.0 treats Status=0 as potentially uninitialized and
+    // requests fresh JbpUserData; RC4/5 incorrectly accepted 0 as final.
+    const initialStatus = welfare.JbpUserData?.Status;
+    if (initialStatus == null || Number(initialStatus) === 0) {
+      if (!apiMethods.statusQuery) return "status-query-api-unavailable";
+      try {
+        welfare.ReqJbpTreeUsing();
+      } catch (error) {
+        console.warn("[xiaochao] 自动砍树: tree status query failed", error);
+        return "status-query-failed";
+      }
     }
     const treeData = await wait(() => {
       const data = welfare.JbpUserData;
-      return data && data.Status != null ? data : null;
-    }, 20, 500);
-    if (!treeData || Number(treeData.Status) !== 1) return "not-eligible";
+      return data && data.Status != null && Number(data.Status) !== 0 ? data : null;
+    }, 30, 1000);
+    if (!treeData) return "server-status-unconfirmed";
+    if (Number(treeData.Status) !== 1) return "not-eligible";
     if (!bless.FreeBlessItemEnough) return "insufficient-resources";
 
     const level = Number(treeData.Level);
     if (!Number.isSafeInteger(level) || level < 0 || level > 1000) return "invalid-tree-level";
     const itemId = 12130001 + 100 * level;
 
+    // Only enter a paid flow after verifying eligibility and every method
+    // required to complete it. Do not spend if claiming is unavailable.
+    if (!apiMethods.inventory) return "inventory-api-unavailable";
+    if (!apiMethods.claim) return "claim-api-unavailable";
     try {
       let owned = goods.GetGoodsByBaseID(itemId);
       if (!owned) {
+        if (!apiMethods.purchase) return "purchase-api-unavailable";
         shop.BuySingleItem(itemId);
         owned = await wait(() => goods.GetGoodsByBaseID(itemId), 25, 400);
         if (!owned) return "purchase-unconfirmed";
@@ -5100,10 +5120,12 @@
         ? "laya-not-ready"
         : !runtime.bridgeReady
           ? "bridge-not-ready"
-          : !runtime.apiReady
+          : !runtime.managersReady
             ? "managers-not-ready"
-            : null;
-      if (_xiaochaoTreeEnabled() && runtime.apiReady) {
+            : !runtime.apiReady
+              ? "transaction-methods-incomplete"
+              : null;
+      if (_xiaochaoTreeEnabled() && runtime.managersReady) {
         finished = true;
         _xiaochaoTreeWake = null;
         if (timer != null) clearInterval(timer);
@@ -7927,7 +7949,7 @@
       let current;
       for (let tries = 0; tries < 12; tries++) {
         current = { id: _xiaochaoCaptureSessionID, startedAt: _xiaochaoCaptureStartedAt,
-          savedAt: new Date().toISOString(), version: "1.5.5", packets, events, lastDom };
+          savedAt: new Date().toISOString(), version: "1.5.6", packets, events, lastDom };
         if (JSON.stringify(current).length <= 325000) break;
         packets = packets.slice(Math.ceil(packets.length * 0.2));
         events = events.slice(Math.ceil(events.length * 0.2));
@@ -7967,10 +7989,10 @@
     // In-memory evidence remains exportable when storage is unavailable/disabled.
     if (!sessions.some(s => s.id === _xiaochaoCaptureSessionID)) {
       sessions.push({ id:_xiaochaoCaptureSessionID, startedAt:_xiaochaoCaptureStartedAt,
-        version:"1.5.5", packets:_xiaochaoPacketBuffer.slice(),
+        version:"1.5.6", packets:_xiaochaoPacketBuffer.slice(),
         events:_xiaochaoDebugTraceBuffer.filter(e => e && e.type !== "DOM_DIAGNOSTIC_STATE").slice(-600) });
     }
-    const payload = { exportedAt:new Date().toISOString(), version:"1.5.5",
+    const payload = { exportedAt:new Date().toISOString(), version:"1.5.6",
       scope:"Local-only game-event diagnostics; sessions include live games and any subsequent replays.",
       captureEnabled:_xiaochaoCaptureEnabled, storageError:_xiaochaoCaptureError || null,
       sessions, currentSnapshot:_xiaochaoDebugSnapshot() };
@@ -8054,7 +8076,7 @@
       })) : [];
       return {
         timestamp: new Date().toISOString(),
-        version: "1.5.5",
+        version: "1.5.6",
         room: {
           myID: (() => { try { return room && room.myID; } catch (_) { return undefined; } })(),
           mySeats: Array.isArray(room && room.mySeats) ? room.mySeats.slice() : [],
@@ -8099,7 +8121,7 @@
         }))
       };
     } catch (error) {
-      return { timestamp: new Date().toISOString(), version: "1.5.5", snapshotError: String(error) };
+      return { timestamp: new Date().toISOString(), version: "1.5.6", snapshotError: String(error) };
     }
   }
 
@@ -8127,7 +8149,7 @@
   function _xiaochaoInstallDebugAPI() {
     try {
       window.__XIAOCHAO_DEBUG__ = {
-        version: "1.5.5",
+        version: "1.5.6",
         trace: _xiaochaoDebugTraceBuffer,
         snapshot: _xiaochaoDebugSnapshot,
         clear() {
@@ -8141,7 +8163,7 @@
         exportTrace() {
           const payload = {
             exportedAt: new Date().toISOString(),
-            version: "1.5.5",
+            version: "1.5.6",
             snapshot: _xiaochaoDebugSnapshot(),
             liveDiagnostic: (typeof _xiaochaoDiagState === "function" ? _xiaochaoDiagState("export") : null),
             trace: _xiaochaoDebugTraceBuffer.slice()
@@ -8309,7 +8331,7 @@
     try {
       const globalKey = "__XIAOCHAO_DIAGNOSTIC_INSTANCES__";
       const instance = {
-        version: "1.5.5",
+        version: "1.5.6",
         id: "diag-" + Date.now() + "-" + Math.random().toString(36).slice(2, 8),
         startedAt: new Date().toISOString()
       };
@@ -9423,7 +9445,7 @@
   = window[_0x5e0302(791)],{
     openWindow: _0x5bcb47, json2html: _0x5b0b37, array2table: _0xef5269
   }
-  = window[_0x5e0302(791)], _0x2d3528 = C3rHCNrFDgLTzq(); let _0x44f35b = null; const _0x1139bb = " " + "1.5.5"; function Init() {
+  = window[_0x5e0302(791)], _0x2d3528 = C3rHCNrFDgLTzq(); let _0x44f35b = null; const _0x1139bb = " " + "1.5.6"; function Init() {
     var e = _0x5e0302; return window[e(610)] = e(747), window[e(591)] = globalConfig[e(591)] || 0, window[e(782)](e(465),
     _0x31facc), new Promise(((t, n) =>{
       var i = e; Promise[i(434)]([new Promise((e =>{
