@@ -1,13 +1,13 @@
 {
   "channel": "rc",
-  "version": "1.5.6",
+  "version": "1.5.7",
   "name": "三国杀打小抄 RC",
   "namespace": "williamm388.xiaochao.rc",
   "source_repository": "williamm388/xiaochao",
-  "source_branch": "feature/v1.5.6-auto-kanshu-rc6",
-  "source_commit": "a4bb3866aa7fea423f4f253206dfe7b4f1d14b2e",
-  "userscript_sha256": "e8c205530d267a5c9a7788ca5b05066c7a145e2acea086b83c1c27ea25828359",
-  "metadata_sha256": "3eb0d09c3aff8480963d1705294706938e65caf0476279dfcf099b41b808c911",
+  "source_branch": "feature/v1.5.7-auto-kanshu-rc7",
+  "source_commit": "98e95c933f17c5a8201e61f229d7526291f8f2e6",
+  "userscript_sha256": "f0e4d4a91b4686c19fb1e02fa9c16014610d9b90b90b830db00921485eaee31c",
+  "metadata_sha256": "798799f7a53af0176f40e7e63645c39db94f048fd82b6bd9335a61e34645a49c",
   "live_game_verified": false,
   "stable_release": false
 }
