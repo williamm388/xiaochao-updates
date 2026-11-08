@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         三国杀打小抄 RC
 // @namespace    williamm388.xiaochao.rc
-// @version      1.5.7
+// @version      1.5.8
 // @icon64       https://ts3.tc.mm.bing.net/th/id/ODF.HcIfqnk4n-lbffGcaqDC2w?w=32&h=32&qlt=90&pcl=fffffa&o=6&pid=1.2
 // @match        *://game.4399iw2.com/yxsgs/*
 // @match        *://my.4399.com/yxsgs/*
@@ -4962,38 +4962,40 @@
         debug.trace.push({ type: "AUTO_KANSHU", ts: Date.now(), result: entry.status });
     } catch (_) {}
   }
-  // RC7: restore v3.5.0's laya.caller.method compatibility mapping.
-  // The original client finds BuySingleItem by a method body containing
-  // consumeYuanbao. Inspect descriptors only: never instantiate/open a UI.
+  // RC8: mirror v3.5.0 laya.caller.method()'s method-scan scope:
+  // shop.__proto__ || shop.constructor.prototype. RC7 scanned multiple
+  // unrelated objects and produced four matches in the live client.
+  // Inspect native function descriptors only; never open a game UI.
   function _xiaochaoResolveTreePurchase(shop) {
-    if (!shop) return { method: null, source: "missing-manager", candidates: 0 };
+    const unresolved = (source, names = [], scope = "prototype") => ({
+      method: null, source, candidates: names.length, candidateNames: names, scope
+    });
+    if (!shop) return unresolved("missing-manager", [], "none");
     try {
       if (typeof shop.BuySingleItem === "function")
-        return { method: shop.BuySingleItem, source: "native", candidates: 1 };
-    } catch (_) {}
-    const objects = [shop];
-    try { objects.push(shop.prototype, Object.getPrototypeOf(shop), shop.constructor?.prototype); } catch (_) {}
-    const visited = new Set();
-    const matches = new Map();
-    let inspectionError = false;
-    for (const object of objects) {
-      if (!object || (typeof object !== "object" && typeof object !== "function") || visited.has(object)) continue;
-      visited.add(object);
-      let descriptors;
-      try { descriptors = Object.getOwnPropertyDescriptors(object); }
-      catch (_) { inspectionError = true; continue; }
-      for (const [name, descriptor] of Object.entries(descriptors).slice(0, 512)) {
-        if (name === "constructor" || typeof descriptor.value !== "function") continue;
-        try {
-          if (Function.prototype.toString.call(descriptor.value).includes("consumeYuanbao"))
-            matches.set(descriptor.value, name);
-        } catch (_) { inspectionError = true; }
-      }
+        return { method: shop.BuySingleItem, source: "native",
+          candidates: 1, candidateNames: ["BuySingleItem"], scope: "direct" };
+    } catch (_) { return unresolved("inspection-error"); }
+    let proto;
+    try {
+      proto = Object.getPrototypeOf(shop) || shop.constructor?.prototype;
+    } catch (_) { return unresolved("inspection-error"); }
+    if (!proto) return unresolved("missing");
+    let descriptors;
+    try { descriptors = Object.getOwnPropertyDescriptors(proto); }
+    catch (_) { return unresolved("inspection-error"); }
+    const matches = [];
+    for (const [name, descriptor] of Object.entries(descriptors).slice(0, 512)) {
+      if (name === "constructor" || typeof descriptor.value !== "function") continue;
+      try {
+        if (Function.prototype.toString.call(descriptor.value).includes("consumeYuanbao"))
+          matches.push({ name, method: descriptor.value });
+      } catch (_) { return unresolved("inspection-error"); }
     }
-    // Fail closed on ambiguity, inaccessible method descriptors or missing API.
-    if (inspectionError || matches.size !== 1)
-      return { method: null, source: inspectionError ? "inspection-error" : matches.size > 1 ? "ambiguous" : "missing", candidates: matches.size };
-    return { method: matches.keys().next().value, source: "consumeYuanbao-compat", candidates: 1 };
+    const names = matches.map(x => x.name).slice(0, 16);
+    if (matches.length !== 1) return unresolved(matches.length ? "ambiguous" : "missing", names);
+    return { method: matches[0].method, source: "consumeYuanbao-compat",
+      candidates: 1, candidateNames: names, scope: "prototype" };
   }
   // Read only manager readiness; no purchase is attempted in this probe.
   function _xiaochaoTreeRuntime() {
@@ -5043,7 +5045,7 @@
         const welfare = runtime.welfare;
         const bless = runtime.bless;
         return {
-          version: "1.5.7",
+          version: "1.5.8",
           visibleEnabled: input ? !!input.checked : null,
           effectiveEnabled: _xiaochaoTreeEnabled(),
           legacyConfigEnabled: !!globalConfig.autoKanShuSwitch,
@@ -5062,7 +5064,9 @@
           apiMethods: runtime.apiMethods,
           purchaseResolution: {
             source: runtime.purchaseResolution.source,
-            candidates: runtime.purchaseResolution.candidates
+            candidates: runtime.purchaseResolution.candidates,
+            scope: runtime.purchaseResolution.scope,
+            candidateNames: runtime.purchaseResolution.candidateNames.slice()
           },
           managerErrors: runtime.errors,
           serverStatus: welfare && welfare.JbpUserData ? welfare.JbpUserData.Status : null,
@@ -5156,14 +5160,16 @@
       _xiaochaoKanshuState.lastReadinessAt = new Date().toISOString();
       _xiaochaoKanshuState.lastReadinessReason = !runtime.layaReady
         ? "laya-not-ready"
-        : !runtime.bridgeReady
+        : !runtime.accountReady
+          ? "account-not-ready"
+          : !runtime.bridgeReady
           ? "bridge-not-ready"
           : !runtime.managersReady
             ? "managers-not-ready"
             : !runtime.apiReady
               ? "transaction-methods-incomplete"
               : null;
-      if (_xiaochaoTreeEnabled() && runtime.managersReady) {
+      if (_xiaochaoTreeEnabled() && runtime.accountReady && runtime.managersReady) {
         finished = true;
         _xiaochaoTreeWake = null;
         if (timer != null) clearInterval(timer);
@@ -7987,7 +7993,7 @@
       let current;
       for (let tries = 0; tries < 12; tries++) {
         current = { id: _xiaochaoCaptureSessionID, startedAt: _xiaochaoCaptureStartedAt,
-          savedAt: new Date().toISOString(), version: "1.5.7", packets, events, lastDom };
+          savedAt: new Date().toISOString(), version: "1.5.8", packets, events, lastDom };
         if (JSON.stringify(current).length <= 325000) break;
         packets = packets.slice(Math.ceil(packets.length * 0.2));
         events = events.slice(Math.ceil(events.length * 0.2));
@@ -8027,10 +8033,10 @@
     // In-memory evidence remains exportable when storage is unavailable/disabled.
     if (!sessions.some(s => s.id === _xiaochaoCaptureSessionID)) {
       sessions.push({ id:_xiaochaoCaptureSessionID, startedAt:_xiaochaoCaptureStartedAt,
-        version:"1.5.7", packets:_xiaochaoPacketBuffer.slice(),
+        version:"1.5.8", packets:_xiaochaoPacketBuffer.slice(),
         events:_xiaochaoDebugTraceBuffer.filter(e => e && e.type !== "DOM_DIAGNOSTIC_STATE").slice(-600) });
     }
-    const payload = { exportedAt:new Date().toISOString(), version:"1.5.7",
+    const payload = { exportedAt:new Date().toISOString(), version:"1.5.8",
       scope:"Local-only game-event diagnostics; sessions include live games and any subsequent replays.",
       captureEnabled:_xiaochaoCaptureEnabled, storageError:_xiaochaoCaptureError || null,
       sessions, currentSnapshot:_xiaochaoDebugSnapshot() };
@@ -8114,7 +8120,7 @@
       })) : [];
       return {
         timestamp: new Date().toISOString(),
-        version: "1.5.7",
+        version: "1.5.8",
         room: {
           myID: (() => { try { return room && room.myID; } catch (_) { return undefined; } })(),
           mySeats: Array.isArray(room && room.mySeats) ? room.mySeats.slice() : [],
@@ -8159,7 +8165,7 @@
         }))
       };
     } catch (error) {
-      return { timestamp: new Date().toISOString(), version: "1.5.7", snapshotError: String(error) };
+      return { timestamp: new Date().toISOString(), version: "1.5.8", snapshotError: String(error) };
     }
   }
 
@@ -8187,7 +8193,7 @@
   function _xiaochaoInstallDebugAPI() {
     try {
       window.__XIAOCHAO_DEBUG__ = {
-        version: "1.5.7",
+        version: "1.5.8",
         trace: _xiaochaoDebugTraceBuffer,
         snapshot: _xiaochaoDebugSnapshot,
         clear() {
@@ -8201,7 +8207,7 @@
         exportTrace() {
           const payload = {
             exportedAt: new Date().toISOString(),
-            version: "1.5.7",
+            version: "1.5.8",
             snapshot: _xiaochaoDebugSnapshot(),
             liveDiagnostic: (typeof _xiaochaoDiagState === "function" ? _xiaochaoDiagState("export") : null),
             trace: _xiaochaoDebugTraceBuffer.slice()
@@ -8369,7 +8375,7 @@
     try {
       const globalKey = "__XIAOCHAO_DIAGNOSTIC_INSTANCES__";
       const instance = {
-        version: "1.5.7",
+        version: "1.5.8",
         id: "diag-" + Date.now() + "-" + Math.random().toString(36).slice(2, 8),
         startedAt: new Date().toISOString()
       };
@@ -9483,7 +9489,7 @@
   = window[_0x5e0302(791)],{
     openWindow: _0x5bcb47, json2html: _0x5b0b37, array2table: _0xef5269
   }
-  = window[_0x5e0302(791)], _0x2d3528 = C3rHCNrFDgLTzq(); let _0x44f35b = null; const _0x1139bb = " " + "1.5.7"; function Init() {
+  = window[_0x5e0302(791)], _0x2d3528 = C3rHCNrFDgLTzq(); let _0x44f35b = null; const _0x1139bb = " " + "1.5.8"; function Init() {
     var e = _0x5e0302; return window[e(610)] = e(747), window[e(591)] = globalConfig[e(591)] || 0, window[e(782)](e(465),
     _0x31facc), new Promise(((t, n) =>{
       var i = e; Promise[i(434)]([new Promise((e =>{
