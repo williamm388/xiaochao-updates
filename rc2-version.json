@@ -1,0 +1,15 @@
+{
+  "channel": "ranked-ally-deck-rc2",
+  "version": "1.5.2.1",
+  "namespace": "williamm388.xiaochao.allydeck.rc2",
+  "source_repository": "williamm388/xiaochao",
+  "source_branch": "fix/v1.5.2-rc2-ranked-ally-deck",
+  "source_commit": "16807a9d9283699c2dac3ed0559ab53bbf608a9d",
+  "source_base": "f588b08c54e752898950afbbfc303082afe630cd",
+  "userscript_sha256": "989bab6ee25bc715ecfa64616265fa681d426912bc6dd735a0b023824a9c5cc7",
+  "metadata_sha256": "cd157aa28745e131542225cc3f0b8f344149dfa5f21002735e478a45afc882f6",
+  "manual_zip_sha256": "888e69defb4b998a391de2068fc42f9157da06933e8f9ebb54ad595c0c1a37d3",
+  "ci_success": true,
+  "live_game_verified": false,
+  "stable_release": false
+}
