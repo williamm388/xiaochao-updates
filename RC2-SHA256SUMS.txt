@@ -1,0 +1,2 @@
+989bab6ee25bc715ecfa64616265fa681d426912bc6dd735a0b023824a9c5cc7  xiaochao-ally-deck-rc2.user.js
+cd157aa28745e131542225cc3f0b8f344149dfa5f21002735e478a45afc882f6  xiaochao-ally-deck-rc2.meta.js
